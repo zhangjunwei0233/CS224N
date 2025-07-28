@@ -75,6 +75,30 @@ class ParserModel(nn.Module):
         ###
         # See the PDF for hints.
 
+        # First layer: embeddings to hidden
+        self.embed_to_hidden_weight = nn.Parameter(
+            torch.empty(self.n_features * self.embed_size, self.hidden_size)
+        )
+        nn.init.xavier_uniform_(self.embed_to_hidden_weight)
+
+        self.embed_to_hidden_bias = nn.Parameter(
+            torch.empty(self.hidden_size)
+        )
+        nn.init.uniform_(self.embed_to_hidden_bias)
+
+        # Dropout layer
+        self.dropout = nn.Dropout(self.dropout_prob)
+
+        # Second layer: hidden to logits
+        self.hidden_to_logits_weight = nn.Parameter(
+            torch.empty(self.hidden_size, self.n_classes)
+        )
+        nn.init.xavier_uniform_(self.hidden_to_logits_weight)
+
+        self.hidden_to_logits_bias = nn.Parameter(
+            torch.empty(self.n_classes)
+        )
+        nn.init.uniform_(self.hidden_to_logits_bias)
         # END YOUR CODE
 
     def embedding_lookup(self, w):
@@ -105,7 +129,9 @@ class ParserModel(nn.Module):
         # Gather: https://pytorch.org/docs/stable/torch.html#torch.gather
         # View: https://pytorch.org/docs/stable/tensors.html#torch.Tensor.view
         # Flatten: https://pytorch.org/docs/stable/generated/torch.flatten.html
-        x = None
+        batch_size = w.shape[0]
+        selected = self.embeddings[w]  # (batch_size, n_features, embed_size)
+        x = selected.view(batch_size, -1)
 
         # END YOUR CODE
         return x
@@ -140,7 +166,18 @@ class ParserModel(nn.Module):
         # Please see the following docs for support:
         # Matrix product: https://pytorch.org/docs/stable/torch.html#torch.matmul
         # ReLU: https://pytorch.org/docs/stable/nn.html?highlight=relu#torch.nn.functional.relu
-        logits = None
+
+        # Layer 1: input to embeddings
+        x = self.embedding_lookup(w)  # (batch_size, n_features * embed_size)
+
+        # Layer 2: embeddings to hidden
+        z = x @ self.embed_to_hidden_weight + self.embed_to_hidden_bias
+        h = F.relu(z)
+
+        h = self.dropout(h)  # apply dropout
+
+        # Layer 3: hidden to logits
+        logits = h @ self.hidden_to_logits_weight + self.hidden_to_logits_bias
 
         # END YOUR CODE
         return logits
