@@ -30,6 +30,7 @@ class VocabEntry(object):
     """ Vocabulary Entry, i.e. structure containing either
     src or tgt language terms.
     """
+
     def __init__(self, word2id=None):
         """ Init VocabEntry Instance.
         @param word2id (dict): dictionary mapping words 2 indices
@@ -39,7 +40,7 @@ class VocabEntry(object):
         else:
             self.word2id = dict()
             self.word2id['<pad>'] = 0   # Pad Token
-            self.word2id['<s>'] = 1 # Start Token
+            self.word2id['<s>'] = 1  # Start Token
             self.word2id['</s>'] = 2    # End Token
             self.word2id['<unk>'] = 3   # Unknown Token
         self.unk_id = self.word2id['<unk>']
@@ -141,11 +142,12 @@ class VocabEntry(object):
         valid_words = [w for w, v in word_freq.items() if v >= freq_cutoff]
         print('number of word types: {}, number of word types w/ frequency >= {}: {}'
               .format(len(word_freq), freq_cutoff, len(valid_words)))
-        top_k_words = sorted(valid_words, key=lambda w: word_freq[w], reverse=True)[:size]
+        top_k_words = sorted(
+            valid_words, key=lambda w: word_freq[w], reverse=True)[:size]
         for word in top_k_words:
             vocab_entry.add(word)
         return vocab_entry
-    
+
     @staticmethod
     def from_subword_list(subword_list):
         vocab_entry = VocabEntry()
@@ -157,6 +159,7 @@ class VocabEntry(object):
 class Vocab(object):
     """ Vocab encapsulating src and target langauges.
     """
+
     def __init__(self, src_vocab: VocabEntry, tgt_vocab: VocabEntry):
         """ Init Vocab.
         @param src_vocab (VocabEntry): VocabEntry for source language
@@ -188,7 +191,8 @@ class Vocab(object):
         @param file_path (str): file path to vocab file
         """
         with open(file_path, 'w') as f:
-            json.dump(dict(src_word2id=self.src.word2id, tgt_word2id=self.tgt.word2id), f, indent=2)
+            json.dump(dict(src_word2id=self.src.word2id,
+                      tgt_word2id=self.tgt.word2id), f, indent=2)
 
     @staticmethod
     def load(file_path):
@@ -214,13 +218,15 @@ def get_vocab_list(file_path, source, vocab_size):
     @param file_path (str): file path to corpus
     @param source (str): tgt or src
     @param vocab_size: desired vocabulary size
-    """ 
-    spm.SentencePieceTrainer.Train(input=file_path, model_prefix=source, vocab_size=vocab_size)     # train the spm model
-    sp = spm.SentencePieceProcessor()   # create an instance; this saves .model and .vocab files 
+    """
+    spm.SentencePieceTrainer.Train(
+        input=file_path, model_prefix=source, vocab_size=vocab_size)     # train the spm model
+    # create an instance; this saves .model and .vocab files
+    sp = spm.SentencePieceProcessor()
     sp.Load('{}.model'.format(source))  # loads tgt.model or src.model
-    sp_list = [sp.IdToPiece(piece_id) for piece_id in range(sp.GetPieceSize())] # this is the list of subwords
-    return sp_list 
-
+    sp_list = [sp.IdToPiece(piece_id) for piece_id in range(
+        sp.GetPieceSize())]  # this is the list of subwords
+    return sp_list
 
 
 if __name__ == '__main__':
@@ -229,10 +235,14 @@ if __name__ == '__main__':
     print('read in source sentences: %s' % args['--train-src'])
     print('read in target sentences: %s' % args['--train-tgt'])
 
-    src_sents = get_vocab_list(args['--train-src'], source='src', vocab_size=21000)          # EDIT: NEW VOCAB SIZE
-    tgt_sents = get_vocab_list(args['--train-tgt'], source='tgt', vocab_size=8000)
+    # EDIT: NEW VOCAB SIZE
+    src_sents = get_vocab_list(
+        args['--train-src'], source='src', vocab_size=21000)
+    tgt_sents = get_vocab_list(
+        args['--train-tgt'], source='tgt', vocab_size=8000)
     vocab = Vocab.build(src_sents, tgt_sents)
-    print('generated vocabulary, source %d words, target %d words' % (len(src_sents), len(tgt_sents)))
+    print('generated vocabulary, source %d words, target %d words' %
+          (len(src_sents), len(tgt_sents)))
 
     # src_sents = read_corpus(args['--train-src'], source='src')
     # tgt_sents = read_corpus(args['--train-tgt'], source='tgt')
