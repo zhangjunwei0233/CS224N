@@ -74,10 +74,11 @@ from torch.utils.data import Dataset
 #   x: John Stephen. Born in Glasgow, Steph⁇lder's apprentice on⁇en became a we⁇□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□
 #   y: ohn Stephen. Born in Glasgow, Steph⁇lder's apprentice on⁇en became a we⁇□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□
 
+
 class CharCorruptionDataset(Dataset):
     def __init__(self, data, block_size):
-        self.MASK_CHAR = "\u2047" # the doublequestionmark character, for mask
-        self.PAD_CHAR = "\u25A1" # the empty square character, for pad
+        self.MASK_CHAR = "\u2047"  # the doublequestionmark character, for mask
+        self.PAD_CHAR = "\u25A1"  # the empty square character, for pad
 
         chars = list(sorted(list(set(data))))
         assert self.MASK_CHAR not in chars
@@ -85,8 +86,8 @@ class CharCorruptionDataset(Dataset):
         chars.insert(0, self.MASK_CHAR)
         chars.insert(0, self.PAD_CHAR)
 
-        self.stoi = {ch:i for i,ch in enumerate(chars)}
-        self.itos = {i:ch for i,ch in enumerate(chars)}
+        self.stoi = {ch: i for i, ch in enumerate(chars)}
+        self.itos = {i: ch for i, ch in enumerate(chars)}
 
         data_size, vocab_size = len(data), len(chars)
         print(f'data has {data_size} characters, {vocab_size} unique.')
@@ -123,23 +124,41 @@ class CharCorruptionDataset(Dataset):
 
 class NameDataset(Dataset):
     def __init__(self, pretraining_dataset, data):
-        self.MASK_CHAR = "\u2047" # the doublequestionmark character, for mask
-        self.PAD_CHAR = "\u25A1" # the empty square character, for pad
-        self.itos = pretraining_dataset.itos
-        self.stoi = pretraining_dataset.stoi
-        self.block_size = pretraining_dataset.block_size
-        self.data = list(data.encode('utf-8').decode('ascii', errors='ignore').split('\n'))
+        """Initialize
+
+        Params:
+            pretraining_dataset: CharCorruptionDataset instance
+            data: (str) content of birth_places_train.tsv file
+        """
+        self.MASK_CHAR = "\u2047"  # the doublequestionmark character, for mask
+        self.PAD_CHAR = "\u25A1"  # the empty square character, for pad
+        self.itos = pretraining_dataset.itos  # dict[int, str]
+        self.stoi = pretraining_dataset.stoi  # dict[str, int]
+        self.block_size = pretraining_dataset.block_size  # int: 128
+        # convert data into a list of str with "question\tanswer" format
+        self.data = list(data.encode('utf-8').decode('ascii',
+                         errors='ignore').split('\n'))
 
     def __len__(self):
+        """Return the number of training samples (excludes the last empty line)
+        """
         return len(self.data) - 1
 
     def __getitem__(self, idx):
+        """
+        Retrieve a sample according to its idx
+
+        Returns:
+            formatted input indices and output indices of this sample.
+            input indices are of size (block_size-1,)
+            output indices are of size (block_size,)
+        """
         inp, oup = self.data[idx].split('\t')
-        x = inp + self.MASK_CHAR + oup + self.MASK_CHAR
-        x = x + self.PAD_CHAR*(self.block_size - len(x))
+        x = inp + self.MASK_CHAR + oup + self.MASK_CHAR  # fill in mask
+        x = x + self.PAD_CHAR*(self.block_size - len(x))  # pad till block_size
         y = self.PAD_CHAR*(len(inp)-1) + x[len(inp):]
 
-        x = x[:-1]
+        x = x[:-1]  # remove the last token to form input tokens
         x = torch.tensor([self.stoi[c] for c in x], dtype=torch.long)
         y = torch.tensor([self.stoi[c] for c in y], dtype=torch.long)
         return x, y
@@ -151,8 +170,8 @@ class NameDataset(Dataset):
 if __name__ == '__main__':
     argp = argparse.ArgumentParser()
     argp.add_argument('dataset_type', help="Type of dataset to sample from."
-            "Options: namedata, charcorruption.",
-            choices=["namedata", "charcorruption"])
+                      "Options: namedata, charcorruption.",
+                      choices=["namedata", "charcorruption"])
     args = argp.parse_args()
 
     if args.dataset_type == 'namedata':
@@ -161,7 +180,7 @@ if __name__ == '__main__':
             open('wiki.txt', encoding='utf-8').read(), 128)
         # Make the name dataset
         name_dataset = NameDataset(corruption_dataset,
-            open('birth_places_train.tsv', encoding='utf-8').read())
+                                   open('birth_places_train.tsv', encoding='utf-8').read())
         for _, example in zip(range(4), name_dataset):
             x, y = example
             print('x:', ''.join([name_dataset.itos[int(c)] for c in x]))
@@ -174,4 +193,5 @@ if __name__ == '__main__':
             print('x:', ''.join([corruption_dataset.itos[int(c)] for c in x]))
             print('y:', ''.join([corruption_dataset.itos[int(c)] for c in y]))
     else:
-        raise ValueError(f"Unknown dataset type in command line args: {args.dataset_type}")
+        raise ValueError(
+            f"Unknown dataset type in command line args: {args.dataset_type}")

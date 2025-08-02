@@ -1,13 +1,9 @@
 from mingpt.utils import sample
-import psutil
 from mingpt.trainer import Trainer, TrainerConfig
 from mingpt.model import GPT, GPTConfig
 from mingpt.utils import set_seed
 import logging
-import numpy as np
 import torch
-import torch.nn as nn
-from torch.nn import functional as F
 from dataset import CharDataset
 
 # set up Logging

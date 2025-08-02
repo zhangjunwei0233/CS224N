@@ -16,8 +16,8 @@ argp = argparse.ArgumentParser()
 argp.add_argument('function', help="Choose pretrain, finetune, or evaluate")
 argp.add_argument('variant', help="Choose vanilla or rope")
 argp.add_argument('pretrain_corpus_path', default=None)
-argp.add_argument('--reading_params_path',default=None)
-argp.add_argument('--writing_params_path',default=None)
+argp.add_argument('--reading_params_path', default=None)
+argp.add_argument('--writing_params_path', default=None)
 argp.add_argument('--finetune_corpus_path', default=None)
 argp.add_argument('--eval_corpus_path', default=None)
 argp.add_argument('--outputs_path', default=None)
@@ -59,24 +59,29 @@ mconf = models.GPTConfig(
     n_head=8,
     n_embd=256)
 
+
 # define models.
 # note: models should moved to device defined on lines 30-34.
-
 model = None
 if args.variant == 'vanilla':
     # TODO: [part c] Make some model here
+
     ### YOUR CODE HERE ###
-    pass
+    model = models.GPT(mconf)
     ### END YOUR CODE ###
+
 elif args.variant == 'rope':
     # TODO: [part g] Make some other model here
     # set mconf.rope parameter
+
     ### YOUR CODE HERE ###
     pass
     ### END YOUR CODE ###
 else:
     raise ValueError("Unknown model variant")
 
+# Move model to device (GPU/MPS if available)
+model = model.to(device)
 print('Model on device: ', next(model.parameters()).device)
 
 # Perform pretraining, finetuning, or evaluation
@@ -141,13 +146,37 @@ elif args.function == 'finetune':
     #     number of epochs for each case.
 
     ### YOUR CODE HERE ###
-    pass
+
+    # Create finetune dataset
+    finetune_text = open(args.finetune_corpus_path, encoding='utf-8').read()
+    finetune_dataset = dataset.NameDataset(pretrain_dataset, finetune_text)
+    # print(finetune_dataset.data[:10])
+
+    # Load model pretrained model is exists
+    if args.reading_params_path:
+        model.load_state_dict(torch.load(args.reading_params_path))
+        max_epochs = 10
+    else:
+        max_epochs = 75
+
+    # Create trainer and train the model
+    tconf = trainer.TrainerConfig(max_epochs=max_epochs, batch_size=256, learning_rate=args.finetune_lr, lr_decay=True,
+                                  warmup_tokens=512*20, final_tokens=200*len(pretrain_dataset)*block_size, num_workers=4, writer=writer)
+    trainer = trainer.Trainer(model, finetune_dataset, None, tconf)
+    trainer.train()
+
+    # Save the finetuned model
+    torch.save(model.state_dict(), args.writing_params_path)
+
     ### END YOUR CODE ###
 elif args.function == 'evaluate':
     assert args.outputs_path is not None
     assert args.reading_params_path is not None
     assert args.eval_corpus_path is not None
+
+    # Load trained model parameters
     model.load_state_dict(torch.load(args.reading_params_path))
+
     correct = 0
     total = 0
     with open(args.outputs_path, 'w', encoding='utf-8') as fout:
@@ -156,14 +185,16 @@ elif args.function == 'evaluate':
             x = line.split('\t')[0]
             x = x + '⁇'
             x = torch.tensor([pretrain_dataset.stoi[s] for s in x],
-                             dtype=torch.long)[None,...].to(device)
+                             dtype=torch.long)[None, ...].to(device)
             pred = utils.sample(model, x, 32, sample=False)[0]
             completion = ''.join([pretrain_dataset.itos[int(i)] for i in pred])
             pred = completion.split('⁇')[1]
             predictions.append(pred)
             fout.write(pred + '\n')
-        total, correct = utils.evaluate_places(args.eval_corpus_path, predictions)
+        total, correct = utils.evaluate_places(
+            args.eval_corpus_path, predictions)
     if total > 0:
         print(f'Correct: {correct} out of {total}: {correct/total*100}%')
     else:
-        print(f'Predictions written to {args.outputs_path}; no targets provided')
+        print(
+            f'Predictions written to {args.outputs_path}; no targets provided')
