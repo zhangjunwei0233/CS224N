@@ -75,7 +75,8 @@ elif args.variant == 'rope':
     # set mconf.rope parameter
 
     ### YOUR CODE HERE ###
-    pass
+    mconf.rope = True
+    model = models.GPT(mconf)
     ### END YOUR CODE ###
 else:
     raise ValueError("Unknown model variant")
@@ -107,7 +108,21 @@ if args.function == 'pretrain':
     # writer=writer
 
     ### YOUR CODE HERE ###
-    pass
+
+    # Load dataset
+    assert args.pretrain_corpus_path is not None, "Please specify corpus for pretrain with '--pretrain_corpus_path' option"
+    pretrain_text = open(args.pretrain_corpus_path, encoding='utf-8').read()
+    pretrain_dataset = dataset.CharCorruptionDataset(pretrain_text, block_size)
+
+    # Create trainer and train the model
+    tconf = trainer.TrainerConfig(max_epochs=650, batch_size=128, learning_rate=args.pretrain_lr, lr_decay=True,
+                                  warmup_tokens=512*20, final_tokens=650*len(pretrain_dataset)*block_size, num_workers=4, writer=writer)
+    trainer = trainer.Trainer(model, pretrain_dataset, None, tconf)
+    trainer.train()
+
+    # Save the pretrained model
+    torch.save(model.state_dict(), args.writing_params_path)
+
     ### END YOUR CODE ###
 elif args.function == 'finetune':
     assert args.writing_params_path is not None

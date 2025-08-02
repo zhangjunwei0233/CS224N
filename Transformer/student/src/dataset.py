@@ -67,12 +67,12 @@ from torch.utils.data import Dataset
 # ----------------
 # Here are some examples of input-output pairs (x, y):
 
-#   x: Khatchig Mouradian. Khatchig Mouradian is a jour⁇and tran⁇nalist, writer ⁇□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□
-#   y: hatchig Mouradian. Khatchig Mouradian is a jour⁇and tran⁇nalist, writer ⁇□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□
-#   x: Jaco⁇enry ⁇b H⁇□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□
-#   y: aco⁇enry ⁇b H⁇□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□
-#   x: John Stephen. Born in Glasgow, Steph⁇lder's apprentice on⁇en became a we⁇□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□
-#   y: ohn Stephen. Born in Glasgow, Steph⁇lder's apprentice on⁇en became a we⁇□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□
+#   x: Khatchig Mouradian. Khatchig Mouradian is a jour⁇ and tran⁇ nalist, writer ⁇ □□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□
+#   y: hatchig Mouradian. Khatchig Mouradian is a jour⁇ and tran⁇ nalist, writer ⁇ □□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□
+#   x: Jaco⁇ enry ⁇ b H⁇ □□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□
+#   y: aco⁇ enry ⁇ b H⁇ □□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□
+#   x: John Stephen. Born in Glasgow, Steph⁇ lder's apprentice on⁇ en became a we⁇ □□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□
+#   y: ohn Stephen. Born in Glasgow, Steph⁇ lder's apprentice on⁇ en became a we⁇ □□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□
 
 
 class CharCorruptionDataset(Dataset):
@@ -94,7 +94,8 @@ class CharCorruptionDataset(Dataset):
 
         self.block_size = block_size
         self.vocab_size = vocab_size
-        self.data = data.split('\n')
+        self.data = data.split('\n')  # split each line to a string
+        self.data = self.data[:-1]  # remove the empty document
 
     def __len__(self):
         return len(self.data)
@@ -102,7 +103,58 @@ class CharCorruptionDataset(Dataset):
     def __getitem__(self, idx):
         # TODO [part e]: see spec above
         ### YOUR CODE HERE ###
-        pass
+
+        # Retrieve a document according to idx
+        document = self.data[idx]
+
+        # Randomly truncate the document to 4 <= len <= int(self.blocksize*7/8)
+        min_length = 4
+        max_length = int(self.block_size * 7 / 8)
+
+        assert len(document) > 0, "received an empty document"
+        if len(document) <= min_length:
+            truncated_doc = document
+        else:
+            target_len = random.randint(
+                min_length, min(len(document), max_length))
+            # start_pos = random.randint(0, len(document) - target_len)
+            start_pos = 0
+            truncated_doc = document[start_pos:start_pos + target_len]
+
+        # Break the truncated document into three substrings
+        # [prefix] [masked_content] [suffix]
+        # where masked_content length is 1/4 targetlen on average
+        assert len(
+            truncated_doc) >= 3, f"truncated document '{truncated_doc}' too short to separate into [prefix] [masked] [suffix]"
+
+        masked_len_mean = len(truncated_doc) // 4
+        min_masked_len = max(1, masked_len_mean // 2)
+        max_masked_len = min(masked_len_mean * 3 // 2, len(truncated_doc) - 2)
+        masked_len = random.randint(min_masked_len, max_masked_len)
+        masked_start_pos = random.randint(
+            1, len(truncated_doc) - masked_len - 1)
+
+        prefix = truncated_doc[:masked_start_pos]
+        masked_content = truncated_doc[masked_start_pos:masked_start_pos + masked_len]
+        suffix = truncated_doc[masked_start_pos + masked_len:]
+
+        # Rearrange the substring into following form:
+        # [prefix] MASK_CHAR [suffix] MASK_CHAR [masked_content] [pads]
+        masked_string = prefix + self.MASK_CHAR + suffix + self.MASK_CHAR + \
+            masked_content + self.PAD_CHAR * \
+            (self.block_size - len(truncated_doc) - 1)
+
+        # Compute input and label string
+        input_string = masked_string[:-1]
+        output_string = masked_string[1:]
+
+        # Encode the string as Long tensors and return
+        x = torch.tensor([self.stoi[s]
+                         for s in input_string], dtype=torch.long)
+        y = torch.tensor([self.stoi[s]
+                         for s in output_string], dtype=torch.long)
+
+        return x, y
         ### END YOUR CODE ###
 
 
