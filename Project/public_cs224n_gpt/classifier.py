@@ -57,7 +57,8 @@ class GPT2SentimentClassifier(torch.nn.Module):
 
         # TODO: Create any instance variables you need to classify the sentiment of BERT embeddings.
         # YOUR CODE HERE
-        raise NotImplementedError
+        self.classifier = torch.nn.Linear(
+            config.hidden_size, config.num_labels)
 
     def forward(self, input_ids, attention_mask):
         '''Takes a batch of sentences and returns logits for sentiment classes'''
@@ -66,10 +67,26 @@ class GPT2SentimentClassifier(torch.nn.Module):
         # HINT: You should consider what is an appropriate return value given that
         # the training loop currently uses F.cross_entropy as the loss function.
         # YOUR CODE HERE
-        raise NotImplementedError
+        gpt_output = self.gpt.forward(input_ids, attention_mask)
+        last_token = gpt_output['last_token']
+
+        logits = self.classifier(last_token)
+
+        return logits
 
 
 class SentimentDataset(Dataset):
+    """
+    A Pipeline that processes a Dataset containing (sents, labels, sent_ids)
+
+    Attributes:
+        token_ids: tokenized sents ids with padd. e.g. (1, 102, 3472, 8123, 0, 0, 0)
+        attention_mask: attention mask for token_ids. e.g. (1, 1, 1, 1, 0, 0, 0)
+        labels: labels for sents. e.g. (1)
+        sents: a list of non_tokenized sentences
+        sent_ids: a list of ids for sents
+    """
+
     def __init__(self, dataset, args):
         self.dataset = dataset
         self.p = args
@@ -149,6 +166,17 @@ class SentimentTestDataset(Dataset):
 
 # Load the data: a list of (sentence, label).
 def load_data(filename, flag='train'):
+    """
+    Load data from .csv file and convert it into proper format according to flag
+
+    Args:
+        filename: csv file to read from
+        flag: data purpose, can be 'train' or 'test'
+
+    Returns:
+        a list of documents in Tuple form. (and number of different labels if flag is 'train')
+        document is in different format according to flag. 'train': (sent, label, sent_id); 'test': (sent, sent_id)
+    """
     num_labels = {}
     data = []
     if flag == 'test':
