@@ -66,6 +66,45 @@ class AdamW(Optimizer):
                 ###
                 # Refer to the default project handout for more details.
                 # YOUR CODE HERE
-                raise NotImplementedError
+
+                # Initialize states
+                if 'm' not in state:
+                    state['m'] = torch.zeros_like(grad)
+                    state['v'] = torch.zeros_like(grad)
+                    state['t'] = 0
+
+                # Read out parameters
+                m = state['m']
+                v = state['v']
+                t = state['t']
+                beta1 = group['betas'][0]
+                beta2 = group['betas'][1]
+                lr = group['lr']
+                eps = group['eps']
+                weight_decay = group['weight_decay']
+
+                # Update moment params
+                t += 1
+                m = beta1 * m + (1 - beta1) * grad
+                v = beta2 * v + (1 - beta2) * grad * grad
+
+                # Calculate update
+                if group['correct_bias']:
+                    alpha_t = lr * (math.sqrt(1 - beta2 ** t)
+                                    ) / (1 - beta1 ** t)
+                else:
+                    alpha_t = lr
+                update = alpha_t * m / (torch.sqrt(v) + eps)
+
+                p.data -= update
+
+                # Apply weight decay
+                if weight_decay != 0:
+                    p.data.mul_(1 - lr * weight_decay)
+
+                # Save moment paras back to state
+                state['m'] = m
+                state['v'] = v
+                state['t'] = t
 
         return loss
