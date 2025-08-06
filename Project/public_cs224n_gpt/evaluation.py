@@ -12,6 +12,7 @@ from sklearn.metrics import f1_score, accuracy_score
 from tqdm import tqdm
 import numpy as np
 from sacrebleu.metrics import CHRF
+from transformers import GPT2Tokenizer
 from datasets import (
     SonnetsDataset,
 )
@@ -23,19 +24,34 @@ TQDM_DISABLE = False
 def model_eval_paraphrase(dataloader, model, device):
     # Switch to eval model, will turn off randomness like dropout.
     model.eval()
+
+    # Get tokenizer to convert between token IDs and binary predictions
+    tokenizer = GPT2Tokenizer.from_pretrained('gpt2')
+    yes_token_id = tokenizer.encode("yes")[0]
+    no_token_id = tokenizer.encode("no")[0]
+
     y_true, y_pred, sent_ids = [], [], []
     for step, batch in enumerate(tqdm(dataloader, desc=f'eval', disable=TQDM_DISABLE)):
-        b_ids, b_mask, b_sent_ids, labels = batch['token_ids'], batch['attention_mask'], batch['sent_ids'], batch[
-            'labels'].flatten()
+        # Take first token
+        b_ids, b_mask, b_sent_ids, labels = batch['token_ids'], batch[
+            'attention_mask'], batch['sent_ids'], batch['labels'][:, 0]
 
         b_ids = b_ids.to(device)
         b_mask = b_mask.to(device)
 
         logits = model(b_ids, b_mask).cpu().numpy()
-        preds = np.argmax(logits, axis=1).flatten()
+        pred_token_ids = np.argmax(logits, axis=1)
 
-        y_true.extend(labels)
-        y_pred.extend(preds)
+        # Convert predicted token IDs to binary predictions (0=no, 1=yes)
+        binary_preds = [1 if token_id ==
+                        yes_token_id else 0 for token_id in pred_token_ids]
+
+        # Convert true label token IDs to binary (0=no, 1=yes)
+        binary_labels = [1 if token_id ==
+                         yes_token_id else 0 for token_id in labels.cpu().numpy()]
+
+        y_true.extend(binary_labels)
+        y_pred.extend(binary_preds)
         sent_ids.extend(b_sent_ids)
 
     f1 = f1_score(y_true, y_pred, average='macro')
@@ -48,7 +64,13 @@ def model_eval_paraphrase(dataloader, model, device):
 def model_test_paraphrase(dataloader, model, device):
     # Switch to eval model, will turn off randomness like dropout.
     model.eval()
-    y_true, y_pred, sent_ids = [], [], []
+
+    # Get tokenizer to convert token IDs to binary predictions
+    tokenizer = GPT2Tokenizer.from_pretrained('gpt2')
+    yes_token_id = tokenizer.encode("yes")[0]
+    no_token_id = tokenizer.encode("no")[0]
+
+    y_pred, sent_ids = [], []
     for step, batch in enumerate(tqdm(dataloader, desc=f'eval', disable=TQDM_DISABLE)):
         b_ids, b_mask, b_sent_ids = batch['token_ids'], batch['attention_mask'], batch['sent_ids']
 
@@ -56,9 +78,13 @@ def model_test_paraphrase(dataloader, model, device):
         b_mask = b_mask.to(device)
 
         logits = model(b_ids, b_mask).cpu().numpy()
-        preds = np.argmax(logits, axis=1).flatten()
+        pred_token_ids = np.argmax(logits, axis=1)
 
-        y_pred.extend(preds)
+        # Convert predicted token IDs to binary predictions (0=no, 1=yes)
+        binary_preds = [1 if token_id ==
+                        yes_token_id else 0 for token_id in pred_token_ids]
+
+        y_pred.extend(binary_preds)
         sent_ids.extend(b_sent_ids)
 
     return y_pred, sent_ids
@@ -80,4 +106,3 @@ def test_sonnet(
     # compute chrf
     chrf_score = chrf.corpus_score(generated_sonnets, [true_sonnets])
     return float(chrf_score.score)
-

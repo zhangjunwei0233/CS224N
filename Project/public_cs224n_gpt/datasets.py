@@ -26,18 +26,33 @@ def preprocess_string(s):
 
 class ParaphraseDetectionDataset(Dataset):
     def __init__(self, dataset, args):
+        """
+        Initialize tokenizer, stores data, and sets up any preprocessing.
+        """
         self.dataset = dataset
         self.p = args
         self.tokenizer = GPT2Tokenizer.from_pretrained('gpt2')
         self.tokenizer.pad_token = self.tokenizer.eos_token
 
     def __len__(self):
+        """
+        Called by the DataLoader to determine dataset size.
+        """
         return len(self.dataset)
 
     def __getitem__(self, idx):
+        """
+        Called by the DataLoader to fetch individual samples by index.
+        """
         return self.dataset[idx]
 
     def collate_fn(self, all_data):
+        """
+        Called by the dataLoader to batch multiple samples together:
+            1. convert raw data to proper format ("Q1: ...Q2: ..." "yes/no" in this case)
+            2. then use tokenizer to convert to encodings (i.e. token indices) with paddings and attn_mask
+            3. combine them to a batch and return
+        """
         sent1 = [x[0] for x in all_data]
         sent2 = [x[1] for x in all_data]
         # labels = torch.LongTensor([x[2] for x in all_data])
@@ -47,7 +62,7 @@ class ParaphraseDetectionDataset(Dataset):
             labels, return_tensors='pt', padding=True, truncation=True)['input_ids']
         sent_ids = [x[3] for x in all_data]
 
-        cloze_style_sents = [f'Question 1: "{s1}"\nQuestion 2: "{s2}\nAre these questions asking the same thing?\n' for
+        cloze_style_sents = [f'Is "{s1}" a paraphrase of "{s2}"? Answer "yes" or "no": ' for
                              (s1, s2) in zip(sent1, sent2)]
         encoding = self.tokenizer(
             cloze_style_sents, return_tensors='pt', padding=True, truncation=True)
@@ -101,11 +116,22 @@ class ParaphraseDetectionTestDataset(Dataset):
         return batched_data
 
 
-def load_paraphrase_data(paraphrase_filename, split='train'):
+def load_paraphrase_data(paraphrase_filename, split='train', max_size=None):
+    """
+    Load source file data (format: (id, sent1, sent2, label)) into
+    acceptable data format for Dataset (format: (sent1, sent2, label, id))
+
+    Args:
+        paraphrase_filename: Path to the data file
+        split: 'train', 'dev', or 'test'
+        max_size: Maximum number of examples to load (for debugging/validation)
+    """
     paraphrase_data = []
     if split == 'test':
         with open(paraphrase_filename, 'r') as fp:
             for record in csv.DictReader(fp, delimiter='\t'):
+                if max_size is not None and len(paraphrase_data) >= max_size:
+                    break
                 sent_id = record['id'].lower().strip()
                 paraphrase_data.append((preprocess_string(record['sentence1']),
                                         preprocess_string(record['sentence2']),
@@ -114,6 +140,8 @@ def load_paraphrase_data(paraphrase_filename, split='train'):
     else:
         with open(paraphrase_filename, 'r') as fp:
             for record in csv.DictReader(fp, delimiter='\t'):
+                if max_size is not None and len(paraphrase_data) >= max_size:
+                    break
                 try:
                     sent_id = record['id'].lower().strip()
                     paraphrase_data.append((preprocess_string(record['sentence1']),

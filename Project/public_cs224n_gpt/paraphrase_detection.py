@@ -31,12 +31,12 @@ from evaluation import model_eval_paraphrase, model_test_paraphrase
 from models.gpt2 import GPT2Model
 
 from optimizer import AdamW
+from transformers import GPT2Tokenizer
 
 TQDM_DISABLE = False
 
+
 # Fix the random seed.
-
-
 def seed_everything(seed=11711):
     random.seed(seed)
     np.random.seed(seed)
@@ -54,8 +54,10 @@ class ParaphraseGPT(nn.Module):
         super().__init__()
         self.gpt = GPT2Model.from_pretrained(
             model=args.model_size, d=args.d, l=args.l, num_heads=args.num_heads)
-        # Paraphrase detection has two outputs: 1 (yes) or 0 (no).
-        self.paraphrase_detection_head = nn.Linear(args.d, 2)
+
+        tokenizer = GPT2Tokenizer.from_pretrained('gpt2')
+        # Language modeling head: hidden_size -> vocab_size
+        self.lm_head = nn.Linear(args.d, tokenizer.vocab_size)
 
         # By default, fine-tune the full model.
         for param in self.gpt.parameters():
@@ -63,20 +65,24 @@ class ParaphraseGPT(nn.Module):
 
     def forward(self, input_ids, attention_mask):
         """
-        TODO: Predict the label of the token using the paraphrase_detection_head Linear layer.
+        Cloze-style paraphrase detection: predict next token from full vocabulary.
 
         We structure the input as:
-
           'Is "{s1}" a paraphrase of "{s2}"? Answer "yes" or "no": '
 
-        So you want to find the prediction for the next token at the end of this sentence. Optimistically, it will be the
-        token "yes" (byte pair encoding index of 8505) for examples that are paraphrases or "no" (byte pair encoding index
-         of 3919) for examples that are not paraphrases.
+        The model predicts the next token, which should be "yes" or "no".
+        Returns logits over the entire vocabulary for proper language modeling.
         """
 
-        'Takes a batch of sentences and produces embeddings for them.'
-        # YOUR CODE HERE
-        raise NotImplementedError
+        # Get GPT output with last token representation
+        gpt_output = self.gpt(input_ids, attention_mask)
+        # [batch_size, hidden_size]
+        last_token_hidden = gpt_output['last_token']
+
+        # Apply language modeling head to get logits over full vocabulary
+        logits = self.lm_head(last_token_hidden)  # [batch_size, vocab_size]
+
+        return logits
 
 
 def save_model(model, optimizer, args, filepath):
@@ -96,9 +102,12 @@ def save_model(model, optimizer, args, filepath):
 def train(args):
     """Train GPT-2 for paraphrase detection on the Quora dataset."""
     device = torch.device('cuda') if args.use_gpu else torch.device('cpu')
+    # Step1: Load data
     # Create the data and its corresponding datasets and dataloader.
-    para_train_data = load_paraphrase_data(args.para_train)
-    para_dev_data = load_paraphrase_data(args.para_dev)
+    para_train_data = load_paraphrase_data(
+        args.para_train, split='train', max_size=args.max_train_size)
+    para_dev_data = load_paraphrase_data(
+        args.para_dev, split='dev', max_size=args.max_dev_size)
 
     para_train_data = ParaphraseDetectionDataset(para_train_data, args)
     para_dev_data = ParaphraseDetectionDataset(para_dev_data, args)
@@ -108,6 +117,7 @@ def train(args):
     para_dev_dataloader = DataLoader(para_dev_data, shuffle=False, batch_size=args.batch_size,
                                      collate_fn=para_dev_data.collate_fn)
 
+    # Step2: parse args and create model, optimizer
     args = add_arguments(args)
     model = ParaphraseGPT(args)
     model = model.to(device)
@@ -116,15 +126,15 @@ def train(args):
     optimizer = AdamW(model.parameters(), lr=lr, weight_decay=0.)
     best_dev_acc = 0
 
-    # Run for the specified number of epochs.
+    # Step3: Run for the specified number of epochs.
     for epoch in range(args.epochs):
         model.train()
         train_loss = 0
         num_batches = 0
         for batch in tqdm(para_train_dataloader, desc=f'train-{epoch}', disable=TQDM_DISABLE):
             # Get the input and move it to the gpu (I do not recommend training this model on CPU).
-            b_ids, b_mask, labels = batch['token_ids'], batch['attention_mask'], batch['labels'].flatten(
-            )
+            # Take first token of each label
+            b_ids, b_mask, labels = batch['token_ids'], batch['attention_mask'], batch['labels'][:, 0]
             b_ids = b_ids.to(device)
             b_mask = b_mask.to(device)
             labels = labels.to(device)
@@ -165,8 +175,10 @@ def test(args):
     model.eval()
     print(f"Loaded model to test from {args.filepath}")
 
-    para_dev_data = load_paraphrase_data(args.para_dev)
-    para_test_data = load_paraphrase_data(args.para_test, split='test')
+    para_dev_data = load_paraphrase_data(
+        args.para_dev, split='dev', max_size=args.max_dev_size)
+    para_test_data = load_paraphrase_data(
+        args.para_test, split='test', max_size=args.max_test_size)
 
     para_dev_data = ParaphraseDetectionDataset(para_dev_data, args)
     para_test_data = ParaphraseDetectionTestDataset(para_test_data, args)
@@ -216,6 +228,14 @@ def get_args():
     parser.add_argument("--model_size", type=str,
                         help="The model size as specified on hugging face. DO NOT use the xl model.",
                         choices=['gpt2', 'gpt2-medium', 'gpt2-large'], default='gpt2')
+
+    # Dataset size limiting for debugging/validation
+    parser.add_argument("--max_train_size", type=int, default=None,
+                        help="Maximum number of training examples to use (for debugging)")
+    parser.add_argument("--max_dev_size", type=int, default=None,
+                        help="Maximum number of dev examples to use (for debugging)")
+    parser.add_argument("--max_test_size", type=int, default=None,
+                        help="Maximum number of test examples to use (for debugging)")
 
     args = parser.parse_args()
     return args
