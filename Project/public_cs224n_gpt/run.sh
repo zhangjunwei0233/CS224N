@@ -28,6 +28,10 @@ elif [ "$1" = "debug-sentiment" ]; then
     echo "Running sentiment classification DEBUG mode (reduced epochs)..."
     python3 classifier.py --epochs 2 --fine-tune-mode full-model --use_gpu --batch_size 32 --hidden_dropout_prob 0.3 --lr 1e-5
 
+elif [ "$1" = "sonnet" ]; then
+  echo "Running sonnet generation..."
+  python3 sonnet_generation.py --epochs 10 --use_gpu --temperature 1.2 --top_p 0.9 --batch_size 8 --lr 1e-5 --model_size gpt2
+
 else
     echo "Unknown argument '$1'"
     echo "Available options:"
@@ -41,4 +45,6 @@ else
     echo "  DEBUG/VALIDATION MODES:"
     echo "    debug-para   - Paraphrase detection (100 train, 50 dev/test, 2 epochs)"
     echo "    debug-sentiment - Sentiment classification (2 epochs, smaller batch)"
+    echo "  SONNET GENERATION:"
+    echo "    sonnet       - Sonnect generation (GPT-2 base)"
 fi

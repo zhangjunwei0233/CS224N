@@ -24,6 +24,7 @@ from datasets import (
     SonnetsDataset,
 )
 from models.gpt2 import GPT2Model
+from evaluation import eval_sonnet_dev
 
 from optimizer import AdamW
 
@@ -61,8 +62,10 @@ class SonnetGPT(nn.Module):
         not just the last token! This will allow our model to learn the natural language distribution that composes sonnets,
         not just the distribution over next tokens for the last token!
         """
-        # YOUR CODE HERE
-        raise NotImplementedError
+        gpt_output = self.gpt(input_ids, attention_mask)
+        predicted_tokens = self.gpt.hidden_state_to_token(
+            gpt_output['last_hidden_state'])  # (b, t, vocab_size)
+        return predicted_tokens
 
     def get_device(self):
         for param in self.gpt.parameters():
@@ -158,6 +161,7 @@ def train(args):
         model.train()
         train_loss = 0
         num_batches = 0
+        best_dev_acc = 0
 
         for batch in tqdm(sonnet_dataloader, desc=f'train-{epoch}', disable=TQDM_DISABLE):
             # Get the input and move it to the gpu (I do not recommend training this model on CPU).
@@ -180,24 +184,38 @@ def train(args):
             num_batches += 1
 
         train_loss = train_loss / num_batches
-        print(f"Epoch {epoch}: train loss :: {train_loss:.3f}.")
-        print('Generating several output sonnets...')
-        model.eval()
-        for batch in held_out_sonnet_dataset:
-            encoding = model.tokenizer(
-                batch[1], return_tensors='pt', padding=True, truncation=True).to(device)
-            output = model.generate(
-                encoding['input_ids'], temperature=args.temperature, top_p=args.top_p)
-            print(f'{batch[1]}{output[1]}\n\n')
+
+        # print('Generating several output sonnets...')
+        # model.eval()
+        # for batch in held_out_sonnet_dataset:
+        #     encoding = model.tokenizer(
+        #         batch[1], return_tensors='pt', padding=True, truncation=True).to(device)
+        #     output = model.generate(
+        #         encoding['input_ids'], temperature=args.temperature, top_p=args.top_p)
+        #     print(f'{batch[1]}{output[1]}\n\n')
+
+        # Evaluate with CHRF on dev set
+        print('Evaluating CHRF score on dev set...')
+        chrf_score = eval_sonnet_dev(
+            model,
+            held_out_sonnet_dataset,
+            gold_path='data/TRUE_sonnets_held_out_dev.txt',
+            temperature=args.temperature,
+            top_p=args.top_p
+        )
+        print(
+            f"Epoch {epoch}: train loss :: {train_loss:.3f}, dev CHRF :: {chrf_score:.3f}")
 
         # TODO: consider a stopping condition to prevent overfitting on the small dataset of sonnets.
-        save_model(model, optimizer, args, f'{epoch}_{args.filepath}')
+        if (chrf_score > best_dev_acc):
+            best_dev_acc = chrf_score
+            save_model(model, optimizer, args, args.filepath)
 
 
 @torch.no_grad()
 def generate_submission_sonnets(args):
     device = torch.device('cuda') if args.use_gpu else torch.device('cpu')
-    saved = torch.load(f'{args.epochs-1}_{args.filepath}', weights_only=False)
+    saved = torch.load(args.filepath, weights_only=False)
 
     model = SonnetGPT(saved['args'])
     model.load_state_dict(saved['model'])
@@ -277,8 +295,7 @@ def add_arguments(args):
 
 if __name__ == "__main__":
     args = get_args()
-    args.filepath = f'{args.epochs}-{args.lr}-sonnet.pt'  # Save path.
+    args.filepath = 'sonnet-generator.pt'  # Save path.
     seed_everything(args.seed)  # Fix the seed for reproducibility.
     train(args)
     generate_submission_sonnets(args)
-

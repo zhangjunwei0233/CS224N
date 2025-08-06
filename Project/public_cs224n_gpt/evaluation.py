@@ -90,6 +90,52 @@ def model_test_paraphrase(dataloader, model, device):
     return y_pred, sent_ids
 
 
+@torch.no_grad()
+def eval_sonnet_dev(model, held_out_dataset, gold_path='data/TRUE_sonnets_held_out_dev.txt', temperature=1.2, top_p=0.9):
+    """
+    Evaluate sonnet generation on dev set during training.
+
+    Args:
+        model: The SonnetGPT model
+        held_out_dataset: The held-out sonnet dataset (first 3 lines)
+        gold_path: Path to true complete sonnets
+        temperature: Generation temperature
+        top_p: Top-p sampling parameter
+
+    Returns:
+        CHRF score as float
+    """
+    device = model.get_device()
+    chrf = CHRF()
+
+    # Generate sonnets for all held-out examples
+    generated_sonnets = []
+    model.eval()
+
+    for batch in held_out_dataset:
+        # Get the partial sonnet (first 3 lines)
+        encoding = model.tokenizer(
+            batch[1], return_tensors='pt', padding=False, truncation=True).to(device)
+
+        # Generate completion
+        output = model.generate(
+            encoding['input_ids'], temperature=temperature, top_p=top_p)
+
+        # Decode the complete generated sonnet
+        full_sonnet = output[1]  # output[1] is the decoded string
+        generated_sonnets.append(full_sonnet)
+
+    # Load true sonnets
+    true_sonnets = [x[1] for x in SonnetsDataset(gold_path)]
+    max_len = min(len(true_sonnets), len(generated_sonnets))
+    true_sonnets = true_sonnets[:max_len]
+    generated_sonnets = generated_sonnets[:max_len]
+
+    # Compute CHRF score
+    chrf_score = chrf.corpus_score(generated_sonnets, [true_sonnets])
+    return float(chrf_score.score)
+
+
 def test_sonnet(
     test_path='predictions/generated_sonnets.txt',
     gold_path='data/TRUE_sonnets_held_out.txt'
