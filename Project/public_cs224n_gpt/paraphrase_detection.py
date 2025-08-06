@@ -55,10 +55,6 @@ class ParaphraseGPT(nn.Module):
         self.gpt = GPT2Model.from_pretrained(
             model=args.model_size, d=args.d, l=args.l, num_heads=args.num_heads)
 
-        tokenizer = GPT2Tokenizer.from_pretrained('gpt2')
-        # Language modeling head: hidden_size -> vocab_size
-        self.lm_head = nn.Linear(args.d, tokenizer.vocab_size)
-
         # By default, fine-tune the full model.
         for param in self.gpt.parameters():
             param.requires_grad = True
@@ -79,8 +75,9 @@ class ParaphraseGPT(nn.Module):
         # [batch_size, hidden_size]
         last_token_hidden = gpt_output['last_token']
 
-        # Apply language modeling head to get logits over full vocabulary
-        logits = self.lm_head(last_token_hidden)  # [batch_size, vocab_size]
+        # Use weight-tied language modeling head to get logits over full vocabulary
+        logits = self.gpt.hidden_state_to_token(
+            last_token_hidden)  # [batch_size, vocab_size]
 
         return logits
 

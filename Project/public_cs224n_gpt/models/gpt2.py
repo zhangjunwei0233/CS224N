@@ -1,5 +1,6 @@
 import torch
 from torch import nn
+import torch.nn.functional as F
 from transformers import GPT2Model as OpenAIGPT2Model
 
 from config import GPT2Config
@@ -116,8 +117,11 @@ class GPT2Model(GPTPreTrainedModel):
 
           return hidden_state(s) * E^T
         """
-        # YOUR CODE HERE
-        raise NotImplementedError
+        # Use F.linear to compute hidden_state @ word_embedding_weights^T
+        # This gives us logits over the vocabulary (vocab_size dimension)
+        # Input: hidden_state [batch_size, hidden_size] or [batch_size, seq_len, hidden_size]
+        # Output: logits [batch_size, vocab_size] or [batch_size, seq_len, vocab_size]
+        return F.linear(hidden_state, self.word_embedding.weight)
 
     @classmethod
     def from_pretrained(cls, model='gpt2', d=768, l=12, num_heads=12):
