@@ -113,16 +113,20 @@ class DiffGPTForCausalLM(PreTrainedModel):
         self.lm_head = nn.Linear(config.n_embd, config.vocab_size, bias=False)
         self.start_emb = nn.Parameter(torch.zeros(1, 1, config.n_embd))
         self._gradient_checkpointing = False
+        self._gc_use_reentrant = True
         self.post_init()
 
     def _set_gradient_checkpointing(self, module, value: bool = False):
         self._gradient_checkpointing = value
 
-    def gradient_checkpointing_enable(self):
-        self._set_gradient_checkpointing(self, True)
+    def gradient_checkpointing_enable(self, gradient_checkpointing_kwargs=None):
+        if isinstance(gradient_checkpointing_kwargs, dict):
+            self._gc_use_reentrant = bool(gradient_checkpointing_kwargs.get("use_reentrant", True))
+        return super().gradient_checkpointing_enable(gradient_checkpointing_kwargs=gradient_checkpointing_kwargs)
 
     def gradient_checkpointing_disable(self):
-        self._set_gradient_checkpointing(self, False)
+        self._gc_use_reentrant = True
+        return super().gradient_checkpointing_disable()
 
     def get_input_embeddings(self) -> nn.Embedding:
         return self.tok_emb
@@ -191,7 +195,7 @@ class DiffGPTForCausalLM(PreTrainedModel):
         if self._gradient_checkpointing and self.training:
             from torch.utils.checkpoint import checkpoint
             for block in self.blocks:
-                x = checkpoint(block, x)
+                x = checkpoint(block, x, use_reentrant=self._gc_use_reentrant)
         else:
             for block in self.blocks:
                 x = block(x)
