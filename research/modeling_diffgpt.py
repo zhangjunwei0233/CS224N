@@ -116,17 +116,16 @@ class DiffGPTForCausalLM(PreTrainedModel):
         self._gc_use_reentrant = True
         self.post_init()
 
-    def _set_gradient_checkpointing(self, module, value: bool = False):
-        self._gradient_checkpointing = value
-
     def gradient_checkpointing_enable(self, gradient_checkpointing_kwargs=None):
+        self._gradient_checkpointing = True
+        # Default to non-reentrant to avoid DDP "marked ready twice" issues
+        self._gc_use_reentrant = False
         if isinstance(gradient_checkpointing_kwargs, dict):
-            self._gc_use_reentrant = bool(gradient_checkpointing_kwargs.get("use_reentrant", True))
-        return super().gradient_checkpointing_enable(gradient_checkpointing_kwargs=gradient_checkpointing_kwargs)
+            self._gc_use_reentrant = bool(gradient_checkpointing_kwargs.get("use_reentrant", False))
 
     def gradient_checkpointing_disable(self):
-        self._gc_use_reentrant = True
-        return super().gradient_checkpointing_disable()
+        self._gradient_checkpointing = False
+        self._gc_use_reentrant = False
 
     def get_input_embeddings(self) -> nn.Embedding:
         return self.tok_emb
