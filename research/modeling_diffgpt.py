@@ -68,7 +68,8 @@ class CausalSelfAttention(nn.Module):
             q = apply_rotary_emb(q, self.rope_cache)
             k = apply_rotary_emb(k, self.rope_cache)
         att = (q @ k.transpose(-2, -1)) * (1.0 / math.sqrt(k.size(-1)))
-        att = att.masked_fill(self.mask[:, :, :T, :T] == 0, -1e10)
+        bad_val = torch.finfo(att.dtype).min if att.dtype.is_floating_point else -1e9
+        att = att.masked_fill(self.mask[:, :, :T, :T] == 0, bad_val)
         att = F.softmax(att, dim=-1)
         att = self.attn_drop(att)
         y = att @ v
@@ -98,7 +99,7 @@ class Block(nn.Module):
 
 class DiffGPTForCausalLM(PreTrainedModel):
     config_class = DiffGPTConfig
-    supports_gradient_checkpointing = False
+    supports_gradient_checkpointing = True
 
     def __init__(self, config: DiffGPTConfig):
         super().__init__(config)
@@ -111,7 +112,20 @@ class DiffGPTForCausalLM(PreTrainedModel):
         self.ln_f = nn.LayerNorm(config.n_embd)
         self.lm_head = nn.Linear(config.n_embd, config.vocab_size, bias=False)
         self.start_emb = nn.Parameter(torch.zeros(1, 1, config.n_embd))
+        self._gradient_checkpointing = False
+        self._gc_use_reentrant = True
         self.post_init()
+
+    def gradient_checkpointing_enable(self, gradient_checkpointing_kwargs=None):
+        self._gradient_checkpointing = True
+        # Default to non-reentrant to avoid DDP "marked ready twice" issues
+        self._gc_use_reentrant = False
+        if isinstance(gradient_checkpointing_kwargs, dict):
+            self._gc_use_reentrant = bool(gradient_checkpointing_kwargs.get("use_reentrant", False))
+
+    def gradient_checkpointing_disable(self):
+        self._gradient_checkpointing = False
+        self._gc_use_reentrant = False
 
     def get_input_embeddings(self) -> nn.Embedding:
         return self.tok_emb
@@ -177,8 +191,13 @@ class DiffGPTForCausalLM(PreTrainedModel):
             x = token_embeddings + position_embeddings
 
         x = self.drop(x)
-        for block in self.blocks:
-            x = block(x)
+        if self._gradient_checkpointing and self.training:
+            from torch.utils.checkpoint import checkpoint
+            for block in self.blocks:
+                x = checkpoint(block, x, use_reentrant=self._gc_use_reentrant)
+        else:
+            for block in self.blocks:
+                x = block(x)
         x = self.ln_f(x)
 
         if self.config.research and original_token_embeddings is not None:
