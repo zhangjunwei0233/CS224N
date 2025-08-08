@@ -78,6 +78,10 @@ elif args.variant == 'rope':
     mconf.rope = True
     model = models.GPT(mconf)
     ### END YOUR CODE ###
+elif args.variant == 'research':
+    mconf.research = True
+    mconf.rope = True
+    model = models.GPT(mconf)
 else:
     raise ValueError("Unknown model variant")
 

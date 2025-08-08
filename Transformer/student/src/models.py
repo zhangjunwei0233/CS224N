@@ -31,6 +31,7 @@ class GPTConfig:
     resid_pdrop = 0.1
     attn_pdrop = 0.1
     rope = False
+    research = False
     bottleneck_dim = None
 
     def __init__(self, vocab_size, block_size, **kwargs):
@@ -81,6 +82,7 @@ class GPT(nn.Module):
                 1, config.block_size, config.n_embd))
         self.drop = nn.Dropout(config.embd_pdrop)
         self.rope = config.rope
+        self.research = config.research
         # transformer
         self.blocks = nn.Sequential(*[Block(config)
                                     for _ in range(config.n_layer)])
@@ -90,6 +92,8 @@ class GPT(nn.Module):
 
         self.block_size = config.block_size
         self.apply(self._init_weights)
+        # research
+        self.start_emb = nn.Parameter(torch.zeros(1, 1, config.n_embd))
 
         print(
             f"number of parameters: {sum(p.numel() for p in self.parameters())}")
@@ -112,7 +116,18 @@ class GPT(nn.Module):
 
         # forward the GPT model
         # each index maps to a (learnable) vector
-        token_embeddings = self.tok_emb(idx)
+        token_embeddings = self.tok_emb(idx)  # (b, t, d)
+
+        # FIXME: test a new idea of sending in difference of tokens instead of tokens iteself
+        if self.research:
+            original_token_embeddings = token_embeddings
+
+            token_embeddings_shifted = torch.roll(
+                token_embeddings, shifts=1, dims=1)
+            token_embeddings_shifted[:, 0, :] = self.start_emb
+
+            token_embeddings = token_embeddings - token_embeddings_shifted
+
         if self.rope:
             x_input = token_embeddings
         else:
@@ -123,6 +138,14 @@ class GPT(nn.Module):
         x = self.drop(x_input)
         x = self.blocks(x)
         x = self.ln_f(x)
+
+        # FIXME: convert from semantic difference back to word
+        # if transformer outputs x_t at position_t, that means this is the desired semantic change at this
+        # position with attention to all the semantic changes before.
+        # Thus, to get the desired next token output_{t+1}, we need to add x_t to input_t
+        if self.research:
+            x += original_token_embeddings
+
         logits = self.head(x)
 
         # if we are given some desired targets also calculate the loss
