@@ -119,6 +119,12 @@ class DiffGPTForCausalLM(PreTrainedModel):
     def set_input_embeddings(self, new_embeddings: nn.Embedding):
         self.tok_emb = new_embeddings
 
+    def get_output_embeddings(self) -> nn.Module:
+        return self.lm_head
+
+    def set_output_embeddings(self, new_head: nn.Module):
+        self.lm_head = new_head
+
     def _init_weights(self, module):
         if isinstance(module, (nn.Linear, nn.Embedding)):
             module.weight.data.normal_(mean=0.0, std=0.02)

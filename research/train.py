@@ -84,6 +84,7 @@ def main():
         fp16=torch.cuda.is_available(),
         bf16=False,
         report_to=["none"],
+        save_safetensors=False,
     )
 
     trainer = Trainer(
