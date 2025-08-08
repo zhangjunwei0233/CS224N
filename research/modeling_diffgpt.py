@@ -153,7 +153,22 @@ class DiffGPTForCausalLM(PreTrainedModel):
             original_token_embeddings = token_embeddings
             token_embeddings_shifted = torch.roll(token_embeddings, shifts=1, dims=1)
             token_embeddings_shifted[:, 0, :] = self.start_emb
-            token_embeddings = token_embeddings - token_embeddings_shifted
+            diff_token_embeddings = token_embeddings - token_embeddings_shifted
+            # Collect statistics for visualization callbacks (no_grad and detached)
+            with torch.no_grad():
+                diff_l2 = diff_token_embeddings.norm(dim=-1)  # (B, T)
+                diff_l2_flat = diff_l2.detach().float().view(-1)
+                # Limit histogram sample size to avoid large tensor logging
+                max_hist_elems = 8192
+                hist_sample = diff_l2_flat[: min(max_hist_elems, diff_l2_flat.numel())].cpu()
+                self._last_diff_stats = {
+                    "diff_mean_l2": diff_l2_flat.mean().item(),
+                    "diff_std_l2": diff_l2_flat.std(unbiased=False).item() if diff_l2_flat.numel() > 1 else 0.0,
+                    "diff_max_l2": diff_l2_flat.max().item(),
+                    "diff_min_l2": diff_l2_flat.min().item(),
+                    "diff_l2_hist_sample": hist_sample,
+                }
+            token_embeddings = diff_token_embeddings
 
         if self.config.rope:
             x = token_embeddings

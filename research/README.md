@@ -39,6 +39,28 @@ python -m research.train --eval_only true --checkpoint /workspace/research/outpu
   --dataset wikitext --dataset_config wikitext-103-v1
 ```
 
+## Visualization & Progress
+
+- By default, TensorBoard logging is enabled. To disable: add `--log_tensorboard false`.
+- Custom research diagnostics: when `--research true`, the model logs statistics of the differential token-embedding L2 norm (mean, std, min, max) and a histogram.
+- Minimal inline figures for loss and eval loss points are written to TensorBoard under `figures/*`. Disable with `--log_figures false`.
+- Console progress markers emit JSON-like dicts for `train_begin`, periodic `progress` (with current metrics), `evaluate`, and `train_end`.
+- To view logs:
+   
+   ```
+   tensorboard --logdir /workspace/research/outputs
+   ```
+
+### Example with more frequent logs
+
+```
+python -m research.train \
+  --dataset wikitext --dataset_config wikitext-103-v1 \
+  --output_dir /workspace/research/outputs/diff \
+  --rope true --research true \
+  --subset_ratio 0.01 --num_train_epochs 1
+```
+
 ## Notes
 - Set `--rope false` to use learned absolute positional embeddings in the baseline.
 - The differential method is designed to work well with RoPE (`--rope true`).
