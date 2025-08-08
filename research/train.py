@@ -31,6 +31,7 @@ def main():
     p.add_argument("--output_dir", default="/workspace/research/outputs/run")
     p.add_argument("--rope", type=BoolFlag.str2bool, default=True)
     p.add_argument("--research", type=BoolFlag.str2bool, default=False)
+    p.add_argument("--impl_check", type=BoolFlag.str2bool, default=False)
     p.add_argument("--n_layer", type=int, default=12)
     p.add_argument("--n_head", type=int, default=12)
     p.add_argument("--n_embd", type=int, default=768)
@@ -44,6 +45,17 @@ def main():
     p.add_argument("--eval_only", type=BoolFlag.str2bool, default=False)
     p.add_argument("--checkpoint", default=None)
     args = p.parse_args()
+
+    # Fast implementation check mode: shrink model, data, and steps
+    if args.impl_check:
+        args.n_layer = min(args.n_layer, 2)
+        args.n_head = min(args.n_head, 2)
+        args.n_embd = min(args.n_embd, 64)
+        args.block_size = min(args.block_size, 64)
+        args.subset_ratio = min(args.subset_ratio, 0.001)
+        args.batch_size = min(args.batch_size, 2)
+        args.micro_batch_size = min(args.micro_batch_size, 1)
+        args.num_train_epochs = 1
 
     tokenizer, lm_datasets = load_lm_dataset(
         dataset=args.dataset,
@@ -74,16 +86,18 @@ def main():
         learning_rate=args.learning_rate,
         weight_decay=args.weight_decay,
         num_train_epochs=args.num_train_epochs,
-        eval_strategy="steps",
-        eval_steps=200,
-        save_strategy="steps",
-        save_steps=200,
+        eval_strategy=("no" if args.impl_check else "steps"),
+        eval_steps=(10 if args.impl_check else 200),
+        save_strategy=("no" if args.impl_check else "steps"),
+        save_steps=(10 if args.impl_check else 200),
         logging_strategy="steps",
-        logging_steps=50,
-        save_total_limit=2,
+        logging_steps=(1 if args.impl_check else 50),
+        save_total_limit=1,
+        max_steps=(10 if args.impl_check else -1),
         fp16=torch.cuda.is_available(),
         bf16=False,
         report_to=["none"],
+        save_safetensors=False,
     )
 
     trainer = Trainer(
