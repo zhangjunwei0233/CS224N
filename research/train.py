@@ -48,6 +48,14 @@ def main():
     p.add_argument("--log_tensorboard", type=BoolFlag.str2bool, default=True)
     p.add_argument("--log_figures", type=BoolFlag.str2bool, default=True)
     p.add_argument("--tb_flush_secs", type=int, default=10)
+    # Optimization controls
+    p.add_argument("--lr_scheduler_type", type=str, default="cosine")
+    p.add_argument("--warmup_ratio", type=float, default=0.03)
+    p.add_argument("--warmup_steps", type=int, default=0)
+    p.add_argument("--optim", type=str, default="adamw_torch")
+    p.add_argument("--adam_beta2", type=float, default=0.95)
+    p.add_argument("--max_grad_norm", type=float, default=1.0)
+    p.add_argument("--gradient_checkpointing", type=BoolFlag.str2bool, default=False)
     args = p.parse_args()
 
     # Fast implementation check mode: shrink model, data, and steps
@@ -106,6 +114,13 @@ def main():
         bf16=False,
         report_to=report_to,
         save_safetensors=False,
+        lr_scheduler_type=args.lr_scheduler_type,
+        warmup_ratio=args.warmup_ratio,
+        warmup_steps=args.warmup_steps,
+        optim=args.optim,
+        adam_beta2=args.adam_beta2,
+        max_grad_norm=args.max_grad_norm,
+        gradient_checkpointing=args.gradient_checkpointing,
     )
 
     # Optional TensorBoard writer for custom scalars/histograms
