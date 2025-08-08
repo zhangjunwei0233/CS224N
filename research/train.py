@@ -55,7 +55,8 @@ def main():
     p.add_argument("--optim", type=str, default="adamw_torch")
     p.add_argument("--adam_beta2", type=float, default=0.95)
     p.add_argument("--max_grad_norm", type=float, default=1.0)
-    p.add_argument("--gradient_checkpointing", type=BoolFlag.str2bool, default=False)
+    p.add_argument("--gradient_checkpointing",
+                   type=BoolFlag.str2bool, default=False)
     args = p.parse_args()
 
     # Fast implementation check mode: shrink model, data, and steps
@@ -88,7 +89,8 @@ def main():
 
     model = DiffGPTForCausalLM(config)
 
-    data_collator = DataCollatorForLanguageModeling(tokenizer=tokenizer, mlm=False)
+    data_collator = DataCollatorForLanguageModeling(
+        tokenizer=tokenizer, mlm=False)
 
     # Configure reporting integrations
     report_to = (["tensorboard"] if args.log_tensorboard else ["none"])
@@ -98,7 +100,8 @@ def main():
         output_dir=args.output_dir,
         per_device_train_batch_size=args.micro_batch_size,
         per_device_eval_batch_size=args.micro_batch_size,
-        gradient_accumulation_steps=max(1, args.batch_size // args.micro_batch_size),
+        gradient_accumulation_steps=max(
+            1, args.batch_size // args.micro_batch_size),
         learning_rate=args.learning_rate,
         weight_decay=args.weight_decay,
         num_train_epochs=args.num_train_epochs,
@@ -121,6 +124,7 @@ def main():
         adam_beta2=args.adam_beta2,
         max_grad_norm=args.max_grad_norm,
         gradient_checkpointing=args.gradient_checkpointing,
+        dataloader_pin_memory=False,  # Helps with multi GPU
     )
 
     # Optional TensorBoard writer for custom scalars/histograms
@@ -128,7 +132,8 @@ def main():
     if args.log_tensorboard:
         try:
             from torch.utils.tensorboard import SummaryWriter
-            tb_writer = SummaryWriter(log_dir=args.output_dir, flush_secs=args.tb_flush_secs)
+            tb_writer = SummaryWriter(
+                log_dir=args.output_dir, flush_secs=args.tb_flush_secs)
         except Exception as e:
             print(f"[warn] Failed to initialize TensorBoard writer: {e}")
             tb_writer = None
@@ -148,16 +153,19 @@ def main():
 
         def on_train_begin(self, args, state: TrainerState, control: TrainerControl, **kwargs):
             self.train_start_time = time.time()
-            print({"event": "train_begin", "num_steps": state.max_steps, "num_epochs": args.num_train_epochs})
+            print({"event": "train_begin", "num_steps": state.max_steps,
+                  "num_epochs": args.num_train_epochs})
             if tb_writer is not None:
-                tb_writer.add_text("run/info", f"Training started. steps={state.max_steps}, epochs={args.num_train_epochs}")
+                tb_writer.add_text(
+                    "run/info", f"Training started. steps={state.max_steps}, epochs={args.num_train_epochs}")
 
         def on_log(self, args, state: TrainerState, control: TrainerControl, logs=None, model=None, **kwargs):
             step = state.global_step
             if logs is None:
                 logs = {}
             # Console progress marker
-            print({"event": "progress", "step": step, **{k: float(v) for k, v in logs.items() if isinstance(v, (int, float))}})
+            print({"event": "progress", "step": step, **{k: float(v)
+                  for k, v in logs.items() if isinstance(v, (int, float))}})
             # TensorBoard scalars
             if tb_writer is not None:
                 for k, v in logs.items():
@@ -166,13 +174,15 @@ def main():
             # Research stats from model
             if getattr(model, "_last_diff_stats", None) is not None and tb_writer is not None:
                 stats = model._last_diff_stats
-                tb_writer.add_scalar("diff/mean_l2", stats["diff_mean_l2"], step)
+                tb_writer.add_scalar(
+                    "diff/mean_l2", stats["diff_mean_l2"], step)
                 tb_writer.add_scalar("diff/std_l2", stats["diff_std_l2"], step)
                 tb_writer.add_scalar("diff/max_l2", stats["diff_max_l2"], step)
                 tb_writer.add_scalar("diff/min_l2", stats["diff_min_l2"], step)
                 # Histogram sampling
                 try:
-                    tb_writer.add_histogram("diff/l2_hist", stats["diff_l2_hist_sample"], step)
+                    tb_writer.add_histogram(
+                        "diff/l2_hist", stats["diff_l2_hist_sample"], step)
                 except Exception:
                     pass
             # Optional inline figure showing recent loss curve
@@ -190,7 +200,8 @@ def main():
             step = state.global_step
             if metrics is None:
                 metrics = {}
-            print({"event": "evaluate", "step": step, **{k: float(v) for k, v in metrics.items() if isinstance(v, (int, float))}})
+            print({"event": "evaluate", "step": step, **{k: float(v)
+                  for k, v in metrics.items() if isinstance(v, (int, float))}})
             if tb_writer is not None:
                 for k, v in metrics.items():
                     if isinstance(v, (int, float)):
@@ -198,7 +209,8 @@ def main():
             # Save a small diagnostic figure comparing train vs eval loss if present
             if self.log_figures and tb_writer is not None and "eval_loss" in metrics:
                 fig = plt.figure(figsize=(4, 3))
-                plt.scatter([step], [metrics["eval_loss"]], marker="x", color="red")
+                plt.scatter([step], [metrics["eval_loss"]],
+                            marker="x", color="red")
                 plt.title("Eval loss (point)")
                 plt.xlabel("step")
                 plt.ylabel("eval_loss")
@@ -208,9 +220,11 @@ def main():
 
         def on_train_end(self, args, state: TrainerState, control: TrainerControl, **kwargs):
             elapsed = time.time() - self.train_start_time if self.train_start_time else None
-            print({"event": "train_end", "elapsed_sec": float(elapsed) if elapsed is not None else None, "steps": state.global_step})
+            print({"event": "train_end", "elapsed_sec": float(elapsed)
+                  if elapsed is not None else None, "steps": state.global_step})
             if tb_writer is not None:
-                tb_writer.add_text("run/info", f"Training ended. elapsed_sec={'{:.1f}'.format(elapsed) if elapsed is not None else 'NA'}")
+                tb_writer.add_text(
+                    "run/info", f"Training ended. elapsed_sec={'{:.1f}'.format(elapsed) if elapsed is not None else 'NA'}")
                 tb_writer.flush()
 
     training_args.logging_first_step = True
@@ -237,7 +251,8 @@ def main():
         ppl = float(math.exp(eval_loss)) if eval_loss < 20 else float("inf")
         print({"eval_loss": eval_loss, "perplexity": ppl})
         if tb_writer is not None:
-            tb_writer.add_scalar("eval/perplexity", ppl, global_step=trainer.state.global_step)
+            tb_writer.add_scalar("eval/perplexity", ppl,
+                                 global_step=trainer.state.global_step)
     else:
         print(eval_metrics)
 
@@ -247,3 +262,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+

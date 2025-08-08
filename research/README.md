@@ -89,12 +89,12 @@ python -m research.train \
 python -m research.train \
     --dataset wikitext --dataset_config wikitext-103-v1 \
     --output_dir /root/autodl-tmp/research/outputs/baseline_mid \
-    --subset_ratio 0.2 --num_train_epochs 1 \
-    --n_later 12 --n_head 12 --n_embd 768 --block_size 1024 \
-    --batch_size 64 --micro_batch_size 4 \
-    --learning_rate 1e-4 --lr_scheduler_type consine --warmup_ratio 0.03 \
-    --weight_decay 0.1 --adam_beta2 0.95 --max_grad_norm 1.0 \
-    --gradient_checkpointing true \
+    --subset_ratio 0.2 --num_train_epochs 3 \
+    --n_layer 12 --n_head 12 --n_embd 768 --block_size 1024 \
+    --batch_size 64 --micro_batch_size 8 \
+    --learning_rate 6e-4 --lr_scheduler_type cosine --warmup_steps 2000 \
+    --weight_decay 0.01 --adam_beta2 0.95 --max_grad_norm 1.0 \
+    --gradient_checkpointing false \
     --rope true --research false
 ```
 
